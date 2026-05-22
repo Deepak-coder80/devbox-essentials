@@ -4,7 +4,7 @@
 # Interactive tool installer for Ubuntu/Debian
 # =============================================================================
 
-set -Euo pipefail
+set -uo pipefail
 
 trap 'error "Failed at line $LINENO"' ERR
 
