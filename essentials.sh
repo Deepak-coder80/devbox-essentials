@@ -6,8 +6,6 @@
 
 set -uo pipefail
 
-trap 'error "Failed at line $LINENO"' ERR
-
 # -----------------------------------------------------------------------------
 # Bash version
 # -----------------------------------------------------------------------------
@@ -44,7 +42,7 @@ error()   { echo -e "${RED}[✘]${RESET} $*" | tee -a "$LOG_FILE"; }
 heading() { echo -e "\n${BOLD}${CYAN}$*${RESET}\n"; }
 
 safe_clear() {
-  [[ -t 1 ]] && clear || true
+  [[ -t 1 ]] && printf "\033c"
 }
 
 tool_cmd() {
@@ -66,22 +64,16 @@ installed() {
 
     docker-compose)
 
-      if docker compose version &>/dev/null; then
-        return 0
-      else
-        return 1
-      fi
+      docker compose version &>/dev/null
+      return $?
       ;;
 
     *)
 
       cmd="$(tool_cmd "$1")"
 
-      if command -v "$cmd" &>/dev/null; then
-        return 0
-      else
-        return 1
-      fi
+      command -v "$cmd" &>/dev/null
+      return $?
       ;;
   esac
 }
@@ -158,9 +150,11 @@ apt_install() {
 
   info "Installing $pkg..."
 
-  retry sudo apt-get install -y "$pkg" >> "$LOG_FILE" 2>&1 \
-    && log "$pkg installed" \
-    || warn "$pkg install failed"
+  if retry sudo apt-get install -y "$pkg" >> "$LOG_FILE" 2>&1; then
+    log "$pkg installed"
+  else
+    warn "$pkg install failed"
+  fi
 }
 
 download_and_run() {
@@ -358,7 +352,9 @@ print_menu() {
       local desc="${TOOL_DESC[$tool]:-$tool}"
       local already=""
 
-      installed "$tool" && already=" ${YELLOW}(installed)${RESET}"
+      if installed "$tool"; then
+        already=" ${YELLOW}(installed)${RESET}"
+      fi
 
       if [[ "$state" == "1" ]]; then
         echo -e "  ${GREEN}[x]${RESET} ${idx}. $desc$already"
@@ -387,7 +383,11 @@ run_menu() {
 
     echo -ne "  ${BOLD}Choice:${RESET} "
 
-    read -r choice
+    if ! read -r choice; then
+      echo ""
+      warn "Input cancelled"
+      exit 1
+    fi
 
     case "$choice" in
 
@@ -480,13 +480,20 @@ confirm_install() {
     if [[ "${SELECTED[$tool]}" == "1" ]]; then
       echo -e "  ${GREEN}✔${RESET} ${TOOL_DESC[$tool]}"
     fi
+
   done
 
   echo ""
 
   echo -ne "${BOLD}Install now? [y/N]: ${RESET}"
 
-  read -r confirm
+  local confirm
+
+  if ! read -r confirm; then
+    echo ""
+    warn "Input cancelled"
+    exit 1
+  fi
 
   [[ "$confirm" =~ ^[Yy]$ ]] || {
     echo "Cancelled."
